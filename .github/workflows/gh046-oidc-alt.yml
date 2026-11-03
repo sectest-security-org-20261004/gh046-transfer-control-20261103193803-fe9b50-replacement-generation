@@ -1,0 +1,26 @@
+name: GH046 alternate OIDC projection
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  projection:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit GH046 OIDC projection
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm%3Aregistry.npmjs.org")"
+          token="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"${response}")"
+          payload="${token#*.}"
+          payload="${payload%%.*}"
+          export GH046_PAYLOAD="${payload}"
+          python3 - <<'PY'
+          import base64, json, os
+          value = os.environ["GH046_PAYLOAD"]
+          claims = json.loads(base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)))
+          keys = ["aud", "environment", "job_workflow_ref", "ref", "repository", "repository_id", "repository_owner", "repository_owner_id", "sub"]
+          print("GH046_PROJECTION=" + json.dumps({k: claims.get(k) for k in keys}, sort_keys=True, separators=(",", ":")))
+          PY
